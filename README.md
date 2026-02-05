@@ -119,5 +119,5 @@ int main() {
 ## Notes
 
 - `ws_client_receive_text` writes a NUL terminator and needs room for payload + 1 byte.
-- Only final (non-fragmented) text/binary frames are accepted by the current receive path.
+- Text/binary receive paths reassemble fragmented messages and allow interleaved ping/pong control frames.
 - Use `ws_client_last_error()` after a failure to retrieve a human-readable reason.

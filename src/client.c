@@ -850,6 +850,11 @@ bool ws_client_send_binary(ws_client_t *client, const uint8_t *data, size_t leng
                                                  const char *expected_name, uint8_t *buffer,
                                                  size_t capacity, size_t *out_length,
                                                  bool add_nul_terminator) {
+    auto terminator_size = add_nul_terminator ? 1U : 0U;
+    auto max_payload_capacity = capacity - terminator_size;
+    size_t total_payload_length = 0;
+    bool message_in_progress = false;
+
     while (true) {
         uint8_t header[2] = {0};
         if (!ws_read_exact(client->socket_fd, client->ssl, client->use_tls, header,
@@ -902,7 +907,7 @@ bool ws_client_send_binary(ws_client_t *client, const uint8_t *data, size_t leng
         }
 
         if (opcode == 0x9U) {
-            if (payload_length > 125U) {
+            if (!fin || payload_length > 125U) {
                 ws_set_error(client, "Invalid ping frame length");
                 return false;
             }
@@ -927,6 +932,11 @@ bool ws_client_send_binary(ws_client_t *client, const uint8_t *data, size_t leng
         }
 
         if (opcode == 0xAU) {
+            if (!fin || payload_length > 125U) {
+                ws_set_error(client, "Invalid pong frame length");
+                return false;
+            }
+
             if (!ws_discard_bytes(client->socket_fd, client->ssl, client->use_tls,
                                   payload_length)) {
                 ws_set_error(client, "Failed to discard pong payload");
@@ -935,49 +945,78 @@ bool ws_client_send_binary(ws_client_t *client, const uint8_t *data, size_t leng
             continue;
         }
 
-        if (!fin || opcode != expected_opcode) {
+        if (opcode == 0x0U) {
+            if (!message_in_progress) {
+                (void)ws_discard_bytes(client->socket_fd, client->ssl, client->use_tls,
+                                       payload_length);
+                ws_set_error(client, "Unexpected continuation frame");
+                return false;
+            }
+        } else if (opcode == expected_opcode) {
+            if (message_in_progress) {
+                (void)ws_discard_bytes(client->socket_fd, client->ssl, client->use_tls,
+                                       payload_length);
+                ws_set_error(client, "Received %s frame while continuation was expected",
+                             expected_name);
+                return false;
+            }
+            message_in_progress = true;
+        } else if (opcode == 0x1U || opcode == 0x2U) {
             (void)ws_discard_bytes(client->socket_fd, client->ssl, client->use_tls,
                                    payload_length);
-            ws_set_error(client, "Only final %s frames are supported", expected_name);
+            ws_set_error(client, "Received unexpected %s frame",
+                         (opcode == 0x1U) ? "text" : "binary");
+            return false;
+        } else {
+            (void)ws_discard_bytes(client->socket_fd, client->ssl, client->use_tls,
+                                   payload_length);
+            ws_set_error(client, "Received unsupported opcode 0x%02X", opcode);
             return false;
         }
 
-        auto terminator_size = add_nul_terminator ? 1U : 0U;
-        if (payload_length > (uint64_t)(SIZE_MAX - terminator_size)) {
+        if (payload_length > (uint64_t)(SIZE_MAX - total_payload_length)) {
             (void)ws_discard_bytes(client->socket_fd, client->ssl, client->use_tls,
                                    payload_length);
-            ws_set_error(client, "Frame too large for this platform");
+            ws_set_error(client, "Message is too large for this platform");
             return false;
         }
 
-        auto required = (size_t)payload_length + terminator_size;
-        if (required > capacity) {
+        auto fragment_length = (size_t)payload_length;
+        auto next_total_payload_length = total_payload_length + fragment_length;
+
+        if (next_total_payload_length > max_payload_capacity) {
             (void)ws_discard_bytes(client->socket_fd, client->ssl, client->use_tls,
                                    payload_length);
             ws_set_error(client, "Receive buffer is too small (%zu bytes required)",
-                         required);
+                         next_total_payload_length + terminator_size);
             return false;
         }
 
-        if (!ws_read_exact(client->socket_fd, client->ssl, client->use_tls, buffer,
-                           (size_t)payload_length)) {
+        if (!ws_read_exact(client->socket_fd, client->ssl, client->use_tls,
+                           buffer + total_payload_length, fragment_length)) {
             ws_set_error(client, "Failed to read frame payload");
             return false;
         }
 
         if (masked) {
             for (size_t i = 0; i < payload_length; ++i) {
-                buffer[i] ^= mask[i % 4];
+                buffer[total_payload_length + i] ^= mask[i % 4];
             }
         }
 
+        total_payload_length = next_total_payload_length;
+        if (!fin) {
+            continue;
+        }
+
         if (add_nul_terminator) {
-            buffer[payload_length] = '\0';
+            buffer[total_payload_length] = '\0';
         }
 
         if (out_length != nullptr) {
-            *out_length = (size_t)payload_length;
+            *out_length = total_payload_length;
         }
+
         return true;
     }
 }
