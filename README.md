@@ -1,0 +1,123 @@
+# websocket-client
+
+A small C23 WebSocket client library with support for both `ws://` and `wss://` connections.
+
+The project builds with Zig and enforces strict warning hygiene (`-Wall -Wextra -Wpedantic -Werror`) with C23 mode (`-std=c2x`).
+
+## Features
+
+- RFC6455 handshake validation (`Sec-WebSocket-Accept`, `Upgrade`, `Connection`)
+- Plain TCP (`ws://`) and TLS (`wss://`) connection support
+- Text and binary send/receive APIs
+- Automatic ping->pong handling during receive
+- Optional sanitizer support in debug builds (ASAN/UBSAN/LSAN)
+
+## Requirements
+
+- Zig (build system)
+- C toolchain with C23/C2x support
+- OpenSSL development libraries (`ssl`, `crypto`)
+- POSIX-like environment (sockets, `getaddrinfo`, `/dev/urandom`)
+
+## Build
+
+Build the static library and example executable:
+
+```bash
+zig build
+```
+
+Install outputs are generated under `zig-out/`, including:
+
+- `zig-out/lib/libwebsocket_client.a`
+- `zig-out/bin/ws_test`
+
+Build without C sanitizers:
+
+```bash
+zig build -Dsanitize=false
+```
+
+## Run the Example
+
+Run the example target:
+
+```bash
+zig build run-example -- <host> <port> <path> <message>
+```
+
+Example (text mode):
+
+```bash
+zig build run-example -- websocket.example.com 443 /chat "hello"
+```
+
+Example binary mode:
+
+```bash
+zig build run-example -- --binary websocket.example.com 443 /chat
+```
+
+If no arguments are provided, `examples/test.c` falls back to its internal defaults.
+
+## Public API
+
+Header: `include/websocket-client/client.h`
+
+- `ws_client_t *ws_client_create()`
+- `void ws_client_destroy(ws_client_t *client)`
+- `bool ws_client_connect(ws_client_t *client, const char *host, uint16_t port, const char *path)`
+- `bool ws_client_connect_secure(ws_client_t *client, const char *host, uint16_t port, const char *path)`
+- `bool ws_client_send_text(ws_client_t *client, const char *text, size_t length)`
+- `bool ws_client_send_binary(ws_client_t *client, const uint8_t *data, size_t length)`
+- `bool ws_client_receive_text(ws_client_t *client, char *buffer, size_t capacity, size_t *out_length)`
+- `bool ws_client_receive_binary(ws_client_t *client, uint8_t *buffer, size_t capacity, size_t *out_length)`
+- `void ws_client_close(ws_client_t *client)`
+- `const char *ws_client_last_error(const ws_client_t *client)`
+
+## Minimal Usage
+
+```c
+#include "websocket-client/client.h"
+
+#include <stdio.h>
+#include <string.h>
+
+int main() {
+    ws_client_t *client = ws_client_create();
+    if (client == nullptr) {
+        return 1;
+    }
+
+    if (!ws_client_connect_secure(client, "websocket.example.com", 443, "/chat")) {
+        fprintf(stderr, "connect failed: %s\n", ws_client_last_error(client));
+        ws_client_destroy(client);
+        return 1;
+    }
+
+    const char message[] = "hello";
+    if (!ws_client_send_text(client, message, strlen(message))) {
+        fprintf(stderr, "send failed: %s\n", ws_client_last_error(client));
+        ws_client_destroy(client);
+        return 1;
+    }
+
+    char buffer[512] = {0};
+    size_t received = 0;
+    if (!ws_client_receive_text(client, buffer, sizeof(buffer), &received)) {
+        fprintf(stderr, "receive failed: %s\n", ws_client_last_error(client));
+        ws_client_destroy(client);
+        return 1;
+    }
+
+    printf("received %zu bytes: %s\n", received, buffer);
+    ws_client_destroy(client);
+    return 0;
+}
+```
+
+## Notes
+
+- `ws_client_receive_text` writes a NUL terminator and needs room for payload + 1 byte.
+- Only final (non-fragmented) text/binary frames are accepted by the current receive path.
+- Use `ws_client_last_error()` after a failure to retrieve a human-readable reason.
