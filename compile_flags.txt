@@ -1,0 +1,7 @@
+-xc
+-std=c2x
+-Wall
+-Wextra
+-Wpedantic
+-Werror
+-Iinclude
