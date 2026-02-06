@@ -832,6 +832,7 @@ bool ws_client_send_binary(ws_client_t *client, const uint8_t *data, size_t leng
     auto max_payload_capacity = capacity - terminator_size;
     size_t total_payload_length = 0;
     bool message_in_progress = false;
+    bool discarding_oversized_message = false;
 
     while (true) {
         uint8_t header[2] = {0};
@@ -963,10 +964,18 @@ bool ws_client_send_binary(ws_client_t *client, const uint8_t *data, size_t leng
         auto next_total_payload_length = total_payload_length + fragment_length;
 
         if (next_total_payload_length > max_payload_capacity) {
+            discarding_oversized_message = true;
+        }
+
+        if (discarding_oversized_message) {
             (void)ws_discard_bytes(client->socket_fd, client->ssl, client->use_tls,
                                    payload_length);
+            total_payload_length = next_total_payload_length;
+            if (!fin) {
+                continue;
+            }
             ws_set_error(client, "Receive buffer is too small (%zu bytes required)",
-                         next_total_payload_length + terminator_size);
+                         total_payload_length + terminator_size);
             return false;
         }
 
