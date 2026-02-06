@@ -6,8 +6,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -20,6 +18,8 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <wolfssl/options.h>
+#include <wolfssl/ssl.h>
 
 constexpr size_t WS_ERROR_MESSAGE_CAPACITY = 256;
 constexpr size_t WS_HTTP_RESPONSE_CAPACITY = 8 * 1024;
@@ -36,8 +36,8 @@ struct ws_client {
     int socket_fd;
     bool connected;
     bool use_tls;
-    SSL_CTX *ssl_ctx;
-    SSL *ssl;
+    WOLFSSL_CTX *ssl_ctx;
+    WOLFSSL *ssl;
     char last_error[WS_ERROR_MESSAGE_CAPACITY];
 };
 
@@ -221,20 +221,20 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
     va_end(args);
 }
 
-[[nodiscard]] static ssize_t ws_transport_recv(int fd, SSL *ssl, bool use_tls, uint8_t *buffer,
+[[nodiscard]] static ssize_t ws_transport_recv(int fd, WOLFSSL *ssl, bool use_tls, uint8_t *buffer,
                                                size_t length) {
     if (use_tls) {
-        auto received = SSL_read(ssl, buffer, (int)length);
+        auto received = wolfSSL_read(ssl, buffer, (int)length);
         return (received > 0) ? received : -1;
     }
 
     return recv(fd, buffer, length, 0);
 }
 
-[[nodiscard]] static ssize_t ws_transport_send(int fd, SSL *ssl, bool use_tls, const uint8_t *buffer,
-                                               size_t length) {
+[[nodiscard]] static ssize_t ws_transport_send(int fd, WOLFSSL *ssl, bool use_tls,
+                                               const uint8_t *buffer, size_t length) {
     if (use_tls) {
-        auto sent = SSL_write(ssl, buffer, (int)length);
+        auto sent = wolfSSL_write(ssl, buffer, (int)length);
         return (sent > 0) ? sent : -1;
     }
 
@@ -245,7 +245,7 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
 #endif
 }
 
-[[nodiscard]] static bool ws_read_exact(int fd, SSL *ssl, bool use_tls, uint8_t *buffer,
+[[nodiscard]] static bool ws_read_exact(int fd, WOLFSSL *ssl, bool use_tls, uint8_t *buffer,
                                         size_t length) {
     size_t total = 0;
     while (total < length) {
@@ -258,7 +258,7 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
     return true;
 }
 
-[[nodiscard]] static bool ws_send_all(int fd, SSL *ssl, bool use_tls, const uint8_t *buffer,
+[[nodiscard]] static bool ws_send_all(int fd, WOLFSSL *ssl, bool use_tls, const uint8_t *buffer,
                                       size_t length) {
     size_t total = 0;
     while (total < length) {
@@ -271,7 +271,7 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
     return true;
 }
 
-[[nodiscard]] static bool ws_read_http_headers(int fd, SSL *ssl, bool use_tls, char *response,
+[[nodiscard]] static bool ws_read_http_headers(int fd, WOLFSSL *ssl, bool use_tls, char *response,
                                                size_t response_capacity) {
     if (response == nullptr || response_capacity < 2) {
         return false;
@@ -300,7 +300,7 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
     return false;
 }
 
-[[nodiscard]] static bool ws_discard_bytes(int fd, SSL *ssl, bool use_tls, uint64_t length) {
+[[nodiscard]] static bool ws_discard_bytes(int fd, WOLFSSL *ssl, bool use_tls, uint64_t length) {
     uint8_t scratch[512] = {0};
     auto remaining = length;
 
@@ -404,14 +404,22 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
         return true;
     }
 
-    auto ctx = SSL_CTX_new(TLS_client_method());
+    static bool wolfssl_initialized = false;
+    if (!wolfssl_initialized) {
+        if (wolfSSL_Init() != WOLFSSL_SUCCESS) {
+            return false;
+        }
+        wolfssl_initialized = true;
+    }
+
+    auto ctx = wolfSSL_CTX_new(wolfTLS_client_method());
     if (ctx == nullptr) {
         return false;
     }
 
-    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
-    if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
-        SSL_CTX_free(ctx);
+    wolfSSL_CTX_set_verify(ctx, WOLFSSL_VERIFY_PEER, nullptr);
+    if (wolfSSL_CTX_set_default_verify_paths(ctx) != WOLFSSL_SUCCESS) {
+        wolfSSL_CTX_free(ctx);
         return false;
     }
 
@@ -419,27 +427,33 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
     return true;
 }
 
-[[nodiscard]] static bool ws_connect_tls(const char *host, int socket_fd, SSL_CTX *ctx,
-                                         SSL **out_ssl) {
-    auto ssl = SSL_new(ctx);
+[[nodiscard]] static bool ws_connect_tls(const char *host, int socket_fd, WOLFSSL_CTX *ctx,
+                                         WOLFSSL **out_ssl) {
+    auto ssl = wolfSSL_new(ctx);
     if (ssl == nullptr) {
         return false;
     }
 
-    if (SSL_set_tlsext_host_name(ssl, host) != 1) {
-        SSL_free(ssl);
+    auto host_length = strlen(host);
+    if (host_length > UINT16_MAX) {
+        wolfSSL_free(ssl);
         return false;
     }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-    if (SSL_set1_host(ssl, host) != 1) {
-        SSL_free(ssl);
+    if (wolfSSL_UseSNI(ssl, WOLFSSL_SNI_HOST_NAME, host, (unsigned short)host_length) !=
+        WOLFSSL_SUCCESS) {
+        wolfSSL_free(ssl);
         return false;
     }
-#endif
 
-    if (SSL_set_fd(ssl, socket_fd) != 1 || SSL_connect(ssl) != 1) {
-        SSL_free(ssl);
+    if (wolfSSL_check_domain_name(ssl, host) != WOLFSSL_SUCCESS) {
+        wolfSSL_free(ssl);
+        return false;
+    }
+
+    if (wolfSSL_set_fd(ssl, socket_fd) != WOLFSSL_SUCCESS ||
+        wolfSSL_connect(ssl) != WOLFSSL_SUCCESS) {
+        wolfSSL_free(ssl);
         return false;
     }
 
@@ -640,7 +654,7 @@ void ws_client_destroy(ws_client_t *client) {
 
     ws_client_close(client);
     if (client->ssl_ctx != nullptr) {
-        SSL_CTX_free(client->ssl_ctx);
+        wolfSSL_CTX_free(client->ssl_ctx);
         client->ssl_ctx = nullptr;
     }
     free(client);
@@ -662,7 +676,7 @@ void ws_client_destroy(ws_client_t *client) {
         return false;
     }
 
-    SSL *ssl = nullptr;
+    WOLFSSL *ssl = nullptr;
     if (use_tls) {
         if (!ws_init_tls_ctx(client)) {
             ws_set_error(client, "Failed to initialize TLS context");
@@ -681,7 +695,7 @@ void ws_client_destroy(ws_client_t *client) {
     if (!ws_get_random_bytes(key_raw, sizeof(key_raw))) {
         ws_set_error(client, "Failed to generate handshake key");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -691,7 +705,7 @@ void ws_client_destroy(ws_client_t *client) {
     if (ws_base64_encode(key_raw, sizeof(key_raw), key_encoded, sizeof(key_encoded)) == 0) {
         ws_set_error(client, "Failed to encode handshake key");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -712,7 +726,7 @@ void ws_client_destroy(ws_client_t *client) {
     if (request_length < 0 || (size_t)request_length >= sizeof(request)) {
         ws_set_error(client, "Handshake request is too large");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -721,7 +735,7 @@ void ws_client_destroy(ws_client_t *client) {
     if (!ws_send_all(socket_fd, ssl, use_tls, (const uint8_t *)request, (size_t)request_length)) {
         ws_set_error(client, "Failed to send handshake: %s", strerror(errno));
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -731,7 +745,7 @@ void ws_client_destroy(ws_client_t *client) {
     if (!ws_read_http_headers(socket_fd, ssl, use_tls, response, sizeof(response))) {
         ws_set_error(client, "Incomplete handshake response");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -740,7 +754,7 @@ void ws_client_destroy(ws_client_t *client) {
     if (strncmp(response, "HTTP/1.1 101", 12) != 0 && strncmp(response, "HTTP/1.0 101", 12) != 0) {
         ws_set_error(client, "Server rejected websocket upgrade");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -751,7 +765,7 @@ void ws_client_destroy(ws_client_t *client) {
         strcasecmp(upgrade_header, "websocket") != 0) {
         ws_set_error(client, "Handshake missing valid Upgrade header");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -763,7 +777,7 @@ void ws_client_destroy(ws_client_t *client) {
         !ws_header_has_token(connection_header, "Upgrade")) {
         ws_set_error(client, "Handshake missing valid Connection header");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -774,7 +788,7 @@ void ws_client_destroy(ws_client_t *client) {
                               sizeof(accept_received))) {
         ws_set_error(client, "Handshake missing Sec-WebSocket-Accept");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -784,7 +798,7 @@ void ws_client_destroy(ws_client_t *client) {
     if (!ws_compute_accept_value(key_encoded, accept_expected, sizeof(accept_expected))) {
         ws_set_error(client, "Failed to compute expected accept key");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -793,7 +807,7 @@ void ws_client_destroy(ws_client_t *client) {
     if (strcmp(accept_received, accept_expected) != 0) {
         ws_set_error(client, "Invalid Sec-WebSocket-Accept header");
         if (ssl != nullptr) {
-            SSL_free(ssl);
+            wolfSSL_free(ssl);
         }
         (void)close(socket_fd);
         return false;
@@ -1045,8 +1059,8 @@ void ws_client_close(ws_client_t *client) {
         (void)ws_send_frame(client, 0x8U, nullptr, 0);
     }
     if (client->ssl != nullptr) {
-        (void)SSL_shutdown(client->ssl);
-        SSL_free(client->ssl);
+        (void)wolfSSL_shutdown(client->ssl);
+        wolfSSL_free(client->ssl);
         client->ssl = nullptr;
     }
     if (client->socket_fd >= 0) {

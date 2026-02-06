@@ -46,8 +46,7 @@ pub fn build(b: *std.Build) void {
         .root_module = example_module,
     });
     example.linkLibrary(lib);
-    example.linkSystemLibrary("ssl");
-    example.linkSystemLibrary("crypto");
+    example.linkSystemLibrary("wolfssl");
 
     b.installArtifact(example);
 

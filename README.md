@@ -16,7 +16,7 @@ The project builds with Zig and enforces strict warning hygiene (`-Wall -Wextra 
 
 - Zig (build system)
 - C toolchain with C23/C2x support
-- OpenSSL development libraries (`ssl`, `crypto`)
+- wolfSSL development library (`wolfssl`)
 - POSIX-like environment (sockets, `getaddrinfo`, `/dev/urandom`)
 
 ## Build
