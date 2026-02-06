@@ -27,6 +27,7 @@ constexpr size_t WS_MAX_HEADER_VALUE = 256;
 constexpr uint16_t WS_HANDSHAKE_VERSION = 13;
 constexpr uint32_t WS_READ_TIMEOUT_SECONDS = 5;
 constexpr uint32_t WS_WRITE_TIMEOUT_SECONDS = 5;
+constexpr uint32_t WS_HTTP_HEADER_TERMINATOR = 0x0D0A0D0AU;
 
 constexpr char WS_ACCEPT_GUID[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 constexpr char WS_BASE64_TABLE[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -268,6 +269,35 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
         total += (size_t)sent;
     }
     return true;
+}
+
+[[nodiscard]] static bool ws_read_http_headers(int fd, SSL *ssl, bool use_tls, char *response,
+                                               size_t response_capacity) {
+    if (response == nullptr || response_capacity < 2) {
+        return false;
+    }
+
+    response[0] = '\0';
+    size_t response_length = 0;
+    uint32_t marker = 0;
+
+    while (response_length + 1 < response_capacity) {
+        uint8_t byte = 0;
+        auto received = ws_transport_recv(fd, ssl, use_tls, &byte, 1);
+        if (received <= 0) {
+            return false;
+        }
+
+        response[response_length++] = (char)byte;
+        response[response_length] = '\0';
+        marker = (marker << 8U) | (uint32_t)byte;
+
+        if (marker == WS_HTTP_HEADER_TERMINATOR) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 [[nodiscard]] static bool ws_discard_bytes(int fd, SSL *ssl, bool use_tls, uint64_t length) {
@@ -698,28 +728,7 @@ void ws_client_destroy(ws_client_t *client) {
     }
 
     char response[WS_HTTP_RESPONSE_CAPACITY] = {0};
-    size_t response_length = 0;
-    while (response_length + 1 < sizeof(response)) {
-        auto bytes = ws_transport_recv(socket_fd, ssl, use_tls, (uint8_t *)response + response_length,
-                                       sizeof(response) - response_length - 1);
-        if (bytes <= 0) {
-            ws_set_error(client, "Failed to receive handshake response: %s", strerror(errno));
-            if (ssl != nullptr) {
-                SSL_free(ssl);
-            }
-            (void)close(socket_fd);
-            return false;
-        }
-
-        response_length += (size_t)bytes;
-        response[response_length] = '\0';
-
-        if (strstr(response, "\r\n\r\n") != nullptr) {
-            break;
-        }
-    }
-
-    if (strstr(response, "\r\n\r\n") == nullptr) {
+    if (!ws_read_http_headers(socket_fd, ssl, use_tls, response, sizeof(response))) {
         ws_set_error(client, "Incomplete handshake response");
         if (ssl != nullptr) {
             SSL_free(ssl);
