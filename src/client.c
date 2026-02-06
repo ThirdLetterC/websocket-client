@@ -369,8 +369,11 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
     return true;
 }
 
-[[nodiscard]] static bool ws_connect_tls(const char *host, int socket_fd, SSL_CTX **out_ctx,
-                                         SSL **out_ssl) {
+[[nodiscard]] static bool ws_init_tls_ctx(ws_client_t *client) {
+    if (client->ssl_ctx != nullptr) {
+        return true;
+    }
+
     auto ctx = SSL_CTX_new(TLS_client_method());
     if (ctx == nullptr) {
         return false;
@@ -382,33 +385,34 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
         return false;
     }
 
+    client->ssl_ctx = ctx;
+    return true;
+}
+
+[[nodiscard]] static bool ws_connect_tls(const char *host, int socket_fd, SSL_CTX *ctx,
+                                         SSL **out_ssl) {
     auto ssl = SSL_new(ctx);
     if (ssl == nullptr) {
-        SSL_CTX_free(ctx);
         return false;
     }
 
     if (SSL_set_tlsext_host_name(ssl, host) != 1) {
         SSL_free(ssl);
-        SSL_CTX_free(ctx);
         return false;
     }
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
     if (SSL_set1_host(ssl, host) != 1) {
         SSL_free(ssl);
-        SSL_CTX_free(ctx);
         return false;
     }
 #endif
 
     if (SSL_set_fd(ssl, socket_fd) != 1 || SSL_connect(ssl) != 1) {
         SSL_free(ssl);
-        SSL_CTX_free(ctx);
         return false;
     }
 
-    *out_ctx = ctx;
     *out_ssl = ssl;
     return true;
 }
@@ -605,6 +609,10 @@ void ws_client_destroy(ws_client_t *client) {
     }
 
     ws_client_close(client);
+    if (client->ssl_ctx != nullptr) {
+        SSL_CTX_free(client->ssl_ctx);
+        client->ssl_ctx = nullptr;
+    }
     free(client);
 }
 
@@ -624,12 +632,19 @@ void ws_client_destroy(ws_client_t *client) {
         return false;
     }
 
-    SSL_CTX *ssl_ctx = nullptr;
     SSL *ssl = nullptr;
-    if (use_tls && !ws_connect_tls(host, socket_fd, &ssl_ctx, &ssl)) {
-        ws_set_error(client, "Failed to establish TLS with %s:%u", host, (unsigned)port);
-        (void)close(socket_fd);
-        return false;
+    if (use_tls) {
+        if (!ws_init_tls_ctx(client)) {
+            ws_set_error(client, "Failed to initialize TLS context");
+            (void)close(socket_fd);
+            return false;
+        }
+
+        if (!ws_connect_tls(host, socket_fd, client->ssl_ctx, &ssl)) {
+            ws_set_error(client, "Failed to establish TLS with %s:%u", host, (unsigned)port);
+            (void)close(socket_fd);
+            return false;
+        }
     }
 
     uint8_t key_raw[16] = {0};
@@ -637,9 +652,6 @@ void ws_client_destroy(ws_client_t *client) {
         ws_set_error(client, "Failed to generate handshake key");
         if (ssl != nullptr) {
             SSL_free(ssl);
-        }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
         }
         (void)close(socket_fd);
         return false;
@@ -650,9 +662,6 @@ void ws_client_destroy(ws_client_t *client) {
         ws_set_error(client, "Failed to encode handshake key");
         if (ssl != nullptr) {
             SSL_free(ssl);
-        }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
         }
         (void)close(socket_fd);
         return false;
@@ -675,9 +684,6 @@ void ws_client_destroy(ws_client_t *client) {
         if (ssl != nullptr) {
             SSL_free(ssl);
         }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
-        }
         (void)close(socket_fd);
         return false;
     }
@@ -686,9 +692,6 @@ void ws_client_destroy(ws_client_t *client) {
         ws_set_error(client, "Failed to send handshake: %s", strerror(errno));
         if (ssl != nullptr) {
             SSL_free(ssl);
-        }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
         }
         (void)close(socket_fd);
         return false;
@@ -703,9 +706,6 @@ void ws_client_destroy(ws_client_t *client) {
             ws_set_error(client, "Failed to receive handshake response: %s", strerror(errno));
             if (ssl != nullptr) {
                 SSL_free(ssl);
-            }
-            if (ssl_ctx != nullptr) {
-                SSL_CTX_free(ssl_ctx);
             }
             (void)close(socket_fd);
             return false;
@@ -724,9 +724,6 @@ void ws_client_destroy(ws_client_t *client) {
         if (ssl != nullptr) {
             SSL_free(ssl);
         }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
-        }
         (void)close(socket_fd);
         return false;
     }
@@ -735,9 +732,6 @@ void ws_client_destroy(ws_client_t *client) {
         ws_set_error(client, "Server rejected websocket upgrade");
         if (ssl != nullptr) {
             SSL_free(ssl);
-        }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
         }
         (void)close(socket_fd);
         return false;
@@ -749,9 +743,6 @@ void ws_client_destroy(ws_client_t *client) {
         ws_set_error(client, "Handshake missing valid Upgrade header");
         if (ssl != nullptr) {
             SSL_free(ssl);
-        }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
         }
         (void)close(socket_fd);
         return false;
@@ -765,9 +756,6 @@ void ws_client_destroy(ws_client_t *client) {
         if (ssl != nullptr) {
             SSL_free(ssl);
         }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
-        }
         (void)close(socket_fd);
         return false;
     }
@@ -779,9 +767,6 @@ void ws_client_destroy(ws_client_t *client) {
         if (ssl != nullptr) {
             SSL_free(ssl);
         }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
-        }
         (void)close(socket_fd);
         return false;
     }
@@ -792,9 +777,6 @@ void ws_client_destroy(ws_client_t *client) {
         if (ssl != nullptr) {
             SSL_free(ssl);
         }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
-        }
         (void)close(socket_fd);
         return false;
     }
@@ -804,9 +786,6 @@ void ws_client_destroy(ws_client_t *client) {
         if (ssl != nullptr) {
             SSL_free(ssl);
         }
-        if (ssl_ctx != nullptr) {
-            SSL_CTX_free(ssl_ctx);
-        }
         (void)close(socket_fd);
         return false;
     }
@@ -814,7 +793,6 @@ void ws_client_destroy(ws_client_t *client) {
     client->socket_fd = socket_fd;
     client->connected = true;
     client->use_tls = use_tls;
-    client->ssl_ctx = ssl_ctx;
     client->ssl = ssl;
     client->last_error[0] = '\0';
     return true;
@@ -1041,22 +1019,22 @@ bool ws_client_send_binary(ws_client_t *client, const uint8_t *data, size_t leng
 }
 
 void ws_client_close(ws_client_t *client) {
-    if (client == nullptr || !client->connected) {
+    if (client == nullptr) {
         return;
     }
 
-    (void)ws_send_frame(client, 0x8U, nullptr, 0);
+    if (client->connected) {
+        (void)ws_send_frame(client, 0x8U, nullptr, 0);
+    }
     if (client->ssl != nullptr) {
         (void)SSL_shutdown(client->ssl);
         SSL_free(client->ssl);
         client->ssl = nullptr;
     }
-    if (client->ssl_ctx != nullptr) {
-        SSL_CTX_free(client->ssl_ctx);
-        client->ssl_ctx = nullptr;
+    if (client->socket_fd >= 0) {
+        (void)shutdown(client->socket_fd, SHUT_RDWR);
+        (void)close(client->socket_fd);
     }
-    (void)shutdown(client->socket_fd, SHUT_RDWR);
-    (void)close(client->socket_fd);
     client->socket_fd = -1;
     client->connected = false;
     client->use_tls = false;
