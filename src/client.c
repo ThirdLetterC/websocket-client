@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
+#include <wolfssl/wolfcrypt/ecc.h>
 
 constexpr size_t WS_ERROR_MESSAGE_CAPACITY = 256;
 constexpr size_t WS_HTTP_RESPONSE_CAPACITY = 8 * 1024;
@@ -453,10 +454,14 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
 
     if (wolfSSL_set_fd(ssl, socket_fd) != WOLFSSL_SUCCESS ||
         wolfSSL_connect(ssl) != WOLFSSL_SUCCESS) {
+        /* Free retained ECC fixed-point tables after certificate verification. */
+        wc_ecc_fp_free();
         wolfSSL_free(ssl);
         return false;
     }
 
+    /* Free retained ECC fixed-point tables after certificate verification. */
+    wc_ecc_fp_free();
     *out_ssl = ssl;
     return true;
 }
