@@ -821,16 +821,16 @@ ws_client_connect_impl(ws_client_t *client, const char *host, uint16_t port,
   }
 
   char request[1024] = {0};
-  auto request_length = snprintf(request, sizeof(request),
-                                 "GET %s HTTP/1.1\r\n"
-                                 "Host: %s\r\n"
-                                 "Upgrade: websocket\r\n"
-                                 "Connection: Upgrade\r\n"
-                                 "Sec-WebSocket-Key: %s\r\n"
-                                 "Sec-WebSocket-Version: %u\r\n"
-                                 "\r\n",
-                                 path, host_header, key_encoded,
-                                 (unsigned)WS_HANDSHAKE_VERSION);
+  auto request_length =
+      snprintf(request, sizeof(request),
+               "GET %s HTTP/1.1\r\n"
+               "Host: %s\r\n"
+               "Upgrade: websocket\r\n"
+               "Connection: Upgrade\r\n"
+               "Sec-WebSocket-Key: %s\r\n"
+               "Sec-WebSocket-Version: %u\r\n"
+               "\r\n",
+               path, host_header, key_encoded, (unsigned)WS_HANDSHAKE_VERSION);
 
   if (request_length < 0 || (size_t)request_length >= sizeof(request)) {
     ws_set_error(client, "Handshake request is too large");

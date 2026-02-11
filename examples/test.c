@@ -76,7 +76,8 @@ int main(int argc, char **argv) {
     }
   } else {
     bool connected = false;
-    for (size_t i = 0; i < sizeof(WS_DEFAULT_ENDPOINTS) / sizeof(WS_DEFAULT_ENDPOINTS[0]);
+    for (size_t i = 0;
+         i < sizeof(WS_DEFAULT_ENDPOINTS) / sizeof(WS_DEFAULT_ENDPOINTS[0]);
          ++i) {
       const ws_default_endpoint_t *endpoint = &WS_DEFAULT_ENDPOINTS[i];
       if (ws_client_connect_secure(client, endpoint->host, endpoint->port,
