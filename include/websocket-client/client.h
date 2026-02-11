@@ -20,35 +20,39 @@ void ws_client_destroy(ws_client_t *client);
 /**
  * @brief Connects and performs an RFC6455 handshake against a ws:// endpoint.
  */
-[[nodiscard]] bool ws_client_connect(ws_client_t *client, const char *host, uint16_t port,
-                                     const char *path);
+[[nodiscard]] bool ws_client_connect(ws_client_t *client, const char *host,
+                                     uint16_t port, const char *path);
 
 /**
  * @brief Connects and performs an RFC6455 handshake against a wss:// endpoint.
  */
-[[nodiscard]] bool ws_client_connect_secure(ws_client_t *client, const char *host, uint16_t port,
+[[nodiscard]] bool ws_client_connect_secure(ws_client_t *client,
+                                            const char *host, uint16_t port,
                                             const char *path);
 
 /**
  * @brief Sends one text frame.
  */
-bool ws_client_send_text(ws_client_t *client, const char *text, size_t length);
+[[nodiscard]] bool ws_client_send_text(ws_client_t *client, const char *text,
+                                       size_t length);
 
 /**
  * @brief Sends one binary frame.
  */
-bool ws_client_send_binary(ws_client_t *client, const uint8_t *data, size_t length);
+[[nodiscard]] bool ws_client_send_binary(ws_client_t *client,
+                                         const uint8_t *data, size_t length);
 
 /**
  * @brief Receives one text frame into a caller-owned buffer.
  */
-[[nodiscard]] bool ws_client_receive_text(ws_client_t *client, char *buffer, size_t capacity,
-                                          size_t *out_length);
+[[nodiscard]] bool ws_client_receive_text(ws_client_t *client, char *buffer,
+                                          size_t capacity, size_t *out_length);
 
 /**
  * @brief Receives one binary frame into a caller-owned buffer.
  */
-[[nodiscard]] bool ws_client_receive_binary(ws_client_t *client, uint8_t *buffer, size_t capacity,
+[[nodiscard]] bool ws_client_receive_binary(ws_client_t *client,
+                                            uint8_t *buffer, size_t capacity,
                                             size_t *out_length);
 
 /**

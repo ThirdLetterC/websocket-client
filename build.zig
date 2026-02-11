@@ -6,15 +6,28 @@ pub fn build(b: *std.Build) void {
     const sanitize = b.option(bool, "sanitize", "Enable ASAN/UBSAN/LSAN in debug builds") orelse true;
     const sanitize_c = if (sanitize and optimize == .Debug) std.zig.SanitizeC.full else std.zig.SanitizeC.off;
 
-    const base_c_flags = &[_][]const u8{
-        "-std=c2x",
-        "-Wall",
-        "-Wextra",
-        "-Wpedantic",
-        "-Werror",
-    };
-
-    const c_flags = base_c_flags;
+    const c_flags = if (optimize == .Debug)
+        &[_][]const u8{
+            "-std=c2x",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            "-fstack-protector-strong",
+            "-fPIE",
+        }
+    else
+        &[_][]const u8{
+            "-std=c2x",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            "-fstack-protector-strong",
+            "-U_FORTIFY_SOURCE",
+            "-D_FORTIFY_SOURCE=3",
+            "-fPIE",
+        };
 
     const lib_module = b.createModule(.{
         .target = target,
@@ -47,6 +60,11 @@ pub fn build(b: *std.Build) void {
     });
     example.linkLibrary(lib);
     example.linkSystemLibrary("wolfssl");
+    if (target.result.os.tag == .linux) {
+        example.pie = true;
+        example.link_z_relro = true;
+        example.link_z_lazy = false;
+    }
 
     b.installArtifact(example);
 

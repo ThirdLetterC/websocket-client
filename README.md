@@ -11,6 +11,8 @@ The project builds with Zig and enforces strict warning hygiene (`-Wall -Wextra 
 - Text and binary send/receive APIs
 - Automatic ping->pong handling during receive
 - Optional sanitizer support in debug builds (ASAN/UBSAN/LSAN)
+- C23 checked arithmetic (`<stdckdint.h>`) for overflow-sensitive size math
+- Toolchain hardening flags (`-fstack-protector-strong`, `-fPIE`, `RELRO`, and `-D_FORTIFY_SOURCE=3` in non-debug builds)
 
 ## Requirements
 
@@ -19,6 +21,8 @@ The project builds with Zig and enforces strict warning hygiene (`-Wall -Wextra 
 - wolfSSL development library (`wolfssl`)
 - POSIX-like environment (sockets, `getaddrinfo`, `/dev/urandom`)
 
+See `SECURITY.md` for the threat model and hardening posture.
+
 ## Build
 
 Build the static library and example executable:
@@ -26,6 +30,8 @@ Build the static library and example executable:
 ```bash
 zig build
 ```
+
+By default, C sources are compiled with strict warnings, stack protection, and PIE code generation. On Linux, the example executable enables PIE and RELRO.
 
 Install outputs are generated under `zig-out/`, including:
 
