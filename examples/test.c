@@ -20,6 +20,25 @@ static uint16_t parse_port_or_default(const char *port_text,
   return (uint16_t)parsed;
 }
 
+typedef struct {
+  const char *host;
+  uint16_t port;
+  const char *path;
+} ws_default_endpoint_t;
+
+static const ws_default_endpoint_t WS_DEFAULT_ENDPOINTS[] = {
+    {
+        .host = "ws.postman-echo.com",
+        .port = 443,
+        .path = "/raw",
+    },
+    {
+        .host = "echo-websocket.fly.dev",
+        .port = 443,
+        .path = "/",
+    },
+};
+
 int main(int argc, char **argv) {
   bool binary_mode = false;
   auto first_arg_index = 1;
@@ -28,11 +47,17 @@ int main(int argc, char **argv) {
     first_arg_index = 2;
   }
 
-  auto host =
-      (argc > first_arg_index) ? argv[first_arg_index] : "echo.websocket.org";
-  auto port = parse_port_or_default(
-      (argc > first_arg_index + 1) ? argv[first_arg_index + 1] : nullptr, 443);
-  auto path = (argc > first_arg_index + 2) ? argv[first_arg_index + 2] : "/.ws";
+  const char *host = nullptr;
+  auto port = (uint16_t)443;
+  const char *path = "/";
+  if (argc > first_arg_index) {
+    host = argv[first_arg_index];
+    port = parse_port_or_default(
+        (argc > first_arg_index + 1) ? argv[first_arg_index + 1] : nullptr,
+        443);
+    path = (argc > first_arg_index + 2) ? argv[first_arg_index + 2] : "/";
+  }
+
   auto message = (argc > first_arg_index + 3)
                      ? argv[first_arg_index + 3]
                      : "hello from c23 websocket client";
@@ -43,10 +68,35 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  if (!ws_client_connect_secure(client, host, port, path)) {
-    fprintf(stderr, "connect failed: %s\n", ws_client_last_error(client));
-    ws_client_destroy(client);
-    return 1;
+  if (host != nullptr) {
+    if (!ws_client_connect_secure(client, host, port, path)) {
+      fprintf(stderr, "connect failed: %s\n", ws_client_last_error(client));
+      ws_client_destroy(client);
+      return 1;
+    }
+  } else {
+    bool connected = false;
+    for (size_t i = 0; i < sizeof(WS_DEFAULT_ENDPOINTS) / sizeof(WS_DEFAULT_ENDPOINTS[0]);
+         ++i) {
+      const ws_default_endpoint_t *endpoint = &WS_DEFAULT_ENDPOINTS[i];
+      if (ws_client_connect_secure(client, endpoint->host, endpoint->port,
+                                   endpoint->path)) {
+        connected = true;
+        break;
+      }
+
+      fprintf(stderr, "default endpoint %s:%u%s failed: %s\n", endpoint->host,
+              (unsigned)endpoint->port, endpoint->path,
+              ws_client_last_error(client));
+    }
+
+    if (!connected) {
+      fprintf(
+          stderr,
+          "connect failed: unable to reach default websocket echo endpoints\n");
+      ws_client_destroy(client);
+      return 1;
+    }
   }
 
   if (!binary_mode) {

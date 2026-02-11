@@ -24,3 +24,5 @@ core.*
 Thumbs.db
 .vscode/
 .idea/
+
+.zig-global-cache/

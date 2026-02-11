@@ -64,7 +64,9 @@ Example binary mode:
 zig build run-example -- --binary websocket.example.com 443 /chat
 ```
 
-If no arguments are provided, `examples/test.c` falls back to its internal defaults.
+If no arguments are provided, `examples/test.c` attempts these defaults in order:
+- `ws.postman-echo.com:443/raw`
+- `echo-websocket.fly.dev:443/`
 
 ## Public API
 

@@ -390,7 +390,12 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
 }
 
 [[nodiscard]] static bool ws_connect_tcp(const char *host, uint16_t port,
-                                         int *out_fd) {
+                                         int *out_fd, char *error_message,
+                                         size_t error_capacity) {
+  if (error_message != nullptr && error_capacity > 0) {
+    error_message[0] = '\0';
+  }
+
   char port_text[6] = {0};
   (void)snprintf(port_text, sizeof(port_text), "%u", (unsigned)port);
 
@@ -402,14 +407,21 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
   struct addrinfo *result = nullptr;
   auto status = getaddrinfo(host, port_text, &hints, &result);
   if (status != 0) {
+    if (error_message != nullptr && error_capacity > 0) {
+      (void)snprintf(error_message, error_capacity, "getaddrinfo: %s",
+                     gai_strerror(status));
+    }
     return false;
   }
 
   auto connected_fd = -1;
+  auto last_errno = 0;
+  auto attempted_connect = false;
   for (auto current = result; current != nullptr; current = current->ai_next) {
     auto fd =
         socket(current->ai_family, current->ai_socktype, current->ai_protocol);
     if (fd < 0) {
+      last_errno = errno;
       continue;
     }
 
@@ -422,17 +434,31 @@ static void ws_set_error(ws_client_t *client, const char *format, ...) {
     timeout.tv_sec = WS_WRITE_TIMEOUT_SECONDS;
     (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
+    attempted_connect = true;
     if (connect(fd, current->ai_addr, current->ai_addrlen) == 0) {
       connected_fd = fd;
       break;
     }
 
+    last_errno = errno;
     (void)close(fd);
   }
 
   freeaddrinfo(result);
 
   if (connected_fd < 0) {
+    if (error_message != nullptr && error_capacity > 0) {
+      if (attempted_connect && last_errno != 0) {
+        (void)snprintf(error_message, error_capacity, "connect: %s",
+                       strerror(last_errno));
+      } else if (last_errno != 0) {
+        (void)snprintf(error_message, error_capacity, "socket: %s",
+                       strerror(last_errno));
+      } else {
+        (void)snprintf(error_message, error_capacity,
+                       "no address candidates returned");
+      }
+    }
     return false;
   }
 
@@ -730,8 +756,15 @@ ws_client_connect_impl(ws_client_t *client, const char *host, uint16_t port,
   }
 
   int socket_fd = -1;
-  if (!ws_connect_tcp(host, port, &socket_fd)) {
-    ws_set_error(client, "Failed to connect to %s:%u", host, (unsigned)port);
+  char connect_error[128] = {0};
+  if (!ws_connect_tcp(host, port, &socket_fd, connect_error,
+                      sizeof(connect_error))) {
+    if (connect_error[0] != '\0') {
+      ws_set_error(client, "Failed to connect to %s:%u (%s)", host,
+                   (unsigned)port, connect_error);
+    } else {
+      ws_set_error(client, "Failed to connect to %s:%u", host, (unsigned)port);
+    }
     return false;
   }
 
@@ -772,16 +805,31 @@ ws_client_connect_impl(ws_client_t *client, const char *host, uint16_t port,
     return false;
   }
 
+  char host_header[512] = {0};
+  auto is_default_port = use_tls ? (port == 443U) : (port == 80U);
+  auto host_header_length =
+      snprintf(host_header, sizeof(host_header),
+               is_default_port ? "%s" : "%s:%u", host, (unsigned)port);
+  if (host_header_length < 0 ||
+      (size_t)host_header_length >= sizeof(host_header)) {
+    ws_set_error(client, "Handshake Host header is too large");
+    if (ssl != nullptr) {
+      wolfSSL_free(ssl);
+    }
+    (void)close(socket_fd);
+    return false;
+  }
+
   char request[1024] = {0};
   auto request_length = snprintf(request, sizeof(request),
                                  "GET %s HTTP/1.1\r\n"
-                                 "Host: %s:%u\r\n"
+                                 "Host: %s\r\n"
                                  "Upgrade: websocket\r\n"
                                  "Connection: Upgrade\r\n"
                                  "Sec-WebSocket-Key: %s\r\n"
                                  "Sec-WebSocket-Version: %u\r\n"
                                  "\r\n",
-                                 path, host, (unsigned)port, key_encoded,
+                                 path, host_header, key_encoded,
                                  (unsigned)WS_HANDSHAKE_VERSION);
 
   if (request_length < 0 || (size_t)request_length >= sizeof(request)) {
@@ -806,7 +854,8 @@ ws_client_connect_impl(ws_client_t *client, const char *host, uint16_t port,
   char response[WS_HTTP_RESPONSE_CAPACITY] = {0};
   if (!ws_read_http_headers(socket_fd, ssl, use_tls, response,
                             sizeof(response))) {
-    ws_set_error(client, "Incomplete handshake response");
+    ws_set_error(client, "Incomplete handshake response from %s:%u", host,
+                 (unsigned)port);
     if (ssl != nullptr) {
       wolfSSL_free(ssl);
     }
