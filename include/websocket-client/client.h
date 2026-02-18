@@ -1,5 +1,4 @@
-#ifndef WEBSOCKET_CLIENT_CLIENT_H
-#define WEBSOCKET_CLIENT_CLIENT_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -64,5 +63,3 @@ void ws_client_close(ws_client_t *client);
  * @brief Returns the most recent error string.
  */
 [[nodiscard]] const char *ws_client_last_error(const ws_client_t *client);
-
-#endif
