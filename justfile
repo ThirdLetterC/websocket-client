@@ -2,7 +2,7 @@ set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
 zig := env_var_or_default("ZIG", "zig")
 clang_format := env_var_or_default("CLANG_FORMAT", "clang-format")
-format_files := "src/client.c include/websocket-client/client.h examples/test.c"
+format_files := "src/client.c include/websocket_client/websocket_client.h examples/test.c"
 zig_cache_dir := env_var_or_default("ZIG_CACHE_DIR", ".zig-cache")
 zig_global_cache_dir := env_var_or_default("ZIG_GLOBAL_CACHE_DIR", ".zig-global-cache")
 zig_build := zig + " build --cache-dir " + zig_cache_dir + " --global-cache-dir " + zig_global_cache_dir

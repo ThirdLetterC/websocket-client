@@ -70,7 +70,7 @@ If no arguments are provided, `examples/test.c` attempts these defaults in order
 
 ## Public API
 
-Header: `include/websocket-client/client.h`
+Header: `include/websocket_client/websocket_client.h`
 
 - `ws_client_t *ws_client_create()`
 - `void ws_client_destroy(ws_client_t *client)`
@@ -86,7 +86,7 @@ Header: `include/websocket-client/client.h`
 ## Minimal Usage
 
 ```c
-#include "websocket-client/client.h"
+#include "websocket_client/websocket_client.h"
 
 #include <stdio.h>
 #include <string.h>
