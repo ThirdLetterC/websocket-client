@@ -1,4 +1,4 @@
-#include "websocket-client/client.h"
+#include "websocket_client/websocket_client.h"
 
 #include <stdint.h>
 #include <stdio.h>

@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "websocket-client/client.h"
+#include "websocket_client/websocket_client.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
