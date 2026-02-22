@@ -2,22 +2,25 @@
 
 A small C23 WebSocket client library with support for both `ws://` and `wss://` connections.
 
-The project builds with Zig and enforces strict warning hygiene (`-Wall -Wextra -Wpedantic -Werror`) with C23 mode (`-std=c2x`).
+The project builds with Zig and enforces strict warning hygiene (`-Wall -Wextra -Wpedantic -Werror`) with C23 mode (`-std=c23`).
 
 ## Features
 
-- RFC6455 handshake validation (`Sec-WebSocket-Accept`, `Upgrade`, `Connection`)
+- RFC6455 handshake validation (`Sec-WebSocket-Accept`, `Upgrade`, `Connection`, `101` status line)
 - Plain TCP (`ws://`) and TLS (`wss://`) connection support
 - Text and binary send/receive APIs
 - Automatic ping->pong handling during receive
+- Defensive input validation for handshake host/path values (rejects control characters and CR/LF injection)
+- Protocol invariants enforced on receive (`RSV` bits clear, control-frame constraints, and unmasked server frames)
 - Optional sanitizer support in debug builds (ASAN/UBSAN/LSAN)
 - C23 checked arithmetic (`<stdckdint.h>`) for overflow-sensitive size math
-- Toolchain hardening flags (`-fstack-protector-strong`, `-fPIE`, `RELRO`, and `-D_FORTIFY_SOURCE=3` in non-debug builds)
+- Toolchain hardening flags (`-fstack-protector-strong`, `-fPIE`, `RELRO`, and `-D_FORTIFY_SOURCE=3`)
+- Fail-closed parsing for malformed/oversized inbound frames
 
 ## Requirements
 
 - Zig (build system)
-- C toolchain with C23/C2x support
+- C toolchain with C23 support
 - wolfSSL development library (`wolfssl`)
 - POSIX-like environment (sockets, `getaddrinfo`, `/dev/urandom`)
 
@@ -31,12 +34,12 @@ Build the static library and example executable:
 zig build
 ```
 
-By default, C sources are compiled with strict warnings, stack protection, and PIE code generation. On Linux, the example executable enables PIE and RELRO.
+By default, C sources are compiled with strict warnings, stack protection, FORTIFY, and PIE code generation. On Linux, the example executable enables PIE and RELRO.
 
 Install outputs are generated under `zig-out/`, including:
 
 - `zig-out/lib/libwebsocket_client.a`
-- `zig-out/bin/ws_test`
+- `zig-out/bin/ws_simple`
 
 Build without C sanitizers:
 
@@ -64,7 +67,7 @@ Example binary mode:
 zig build run-example -- --binary websocket.example.com 443 /chat
 ```
 
-If no arguments are provided, `examples/test.c` attempts these defaults in order:
+If no arguments are provided, `examples/simple.c` attempts these defaults in order:
 - `ws.postman-echo.com:443/raw`
 - `echo-websocket.fly.dev:443/`
 

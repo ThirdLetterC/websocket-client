@@ -1,5 +1,6 @@
 -xc
--std=c2x
+-std=c23
+-D_POSIX_C_SOURCE=200809L
 -Wall
 -Wextra
 -Wpedantic

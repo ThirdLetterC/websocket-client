@@ -6,28 +6,18 @@ pub fn build(b: *std.Build) void {
     const sanitize = b.option(bool, "sanitize", "Enable ASAN/UBSAN/LSAN in debug builds") orelse true;
     const sanitize_c = if (sanitize and optimize == .Debug) std.zig.SanitizeC.full else std.zig.SanitizeC.off;
 
-    const c_flags = if (optimize == .Debug)
-        &[_][]const u8{
-            "-std=c2x",
-            "-Wall",
-            "-Wextra",
-            "-Wpedantic",
-            "-Werror",
-            "-fstack-protector-strong",
-            "-fPIE",
-        }
-    else
-        &[_][]const u8{
-            "-std=c2x",
-            "-Wall",
-            "-Wextra",
-            "-Wpedantic",
-            "-Werror",
-            "-fstack-protector-strong",
-            "-U_FORTIFY_SOURCE",
-            "-D_FORTIFY_SOURCE=3",
-            "-fPIE",
-        };
+    const c_flags = &[_][]const u8{
+        "-std=c23",
+        "-D_POSIX_C_SOURCE=200809L",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-fstack-protector-strong",
+        "-U_FORTIFY_SOURCE",
+        "-D_FORTIFY_SOURCE=3",
+        "-fPIE",
+    };
 
     const lib_module = b.createModule(.{
         .target = target,
@@ -52,10 +42,10 @@ pub fn build(b: *std.Build) void {
         .sanitize_c = sanitize_c,
     });
     example_module.addIncludePath(b.path("include"));
-    example_module.addCSourceFile(.{ .file = b.path("examples/test.c"), .flags = c_flags });
+    example_module.addCSourceFile(.{ .file = b.path("examples/simple.c"), .flags = c_flags });
 
     const example = b.addExecutable(.{
-        .name = "ws_test",
+        .name = "ws_simple",
         .root_module = example_module,
     });
     example.linkLibrary(lib);
