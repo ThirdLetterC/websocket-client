@@ -47,6 +47,35 @@ Build without C sanitizers:
 zig build -Dsanitize=false
 ```
 
+## Test
+
+Run the unit tests:
+
+```bash
+zig build test
+```
+
+The suite uses a local loopback mock WebSocket server and does not require internet access.
+
+## Coverage
+
+Run unit tests with source-based coverage:
+
+```bash
+zig build coverage
+```
+
+This generates:
+
+- console coverage summary via `llvm-cov report`
+- HTML coverage report under `coverage/html/`
+
+If your tool names differ, override them at build time:
+
+```bash
+zig build coverage -Dcoverage-cc=clang -Dcoverage-profdata=llvm-profdata -Dcoverage-cov=llvm-cov
+```
+
 ## Run the Example
 
 Run the example target:

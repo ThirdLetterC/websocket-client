@@ -28,3 +28,5 @@ Thumbs.db
 .zig-global-cache/
 
 _codeql_detected_source_root/
+
+coverage
