@@ -36,7 +36,7 @@ pub fn build(b: *std.Build) void {
         .sanitize_c = sanitize_c,
     });
     lib_module.addIncludePath(b.path("include"));
-    lib_module.addCSourceFile(.{ .file = b.path("src/client.c"), .flags = c_flags });
+    lib_module.addCSourceFile(.{ .file = b.path("src/websocket_client.c"), .flags = c_flags });
 
     const lib = b.addLibrary(.{
         .name = "websocket_client",
