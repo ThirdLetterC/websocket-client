@@ -98,7 +98,8 @@ typedef struct {
 [[nodiscard]] static bool run_test_receive_text_fails_on_small_buffer();
 [[nodiscard]] static bool run_test_receive_binary_fails_on_small_buffer();
 [[nodiscard]] static bool run_test_receive_text_handles_ping_pong();
-[[nodiscard]] static bool run_test_receive_text_reassembles_fragmented_message();
+[[nodiscard]] static bool
+run_test_receive_text_reassembles_fragmented_message();
 [[nodiscard]] static bool run_test_receive_text_rejects_masked_server_frame();
 [[nodiscard]] static bool run_test_receive_text_rejects_unexpected_binary();
 
@@ -119,12 +120,11 @@ typedef struct {
 [[nodiscard]] static bool test_compute_accept_value(const char *key,
                                                     char *output,
                                                     size_t output_capacity);
-[[nodiscard]] static bool test_send_handshake_response(int fd,
-                                                       const char *accept_value);
+[[nodiscard]] static bool
+test_send_handshake_response(int fd, const char *accept_value);
 
 [[nodiscard]] static bool test_send_frame(int fd, uint8_t opcode, bool fin,
-                                          bool masked,
-                                          const uint8_t *payload,
+                                          bool masked, const uint8_t *payload,
                                           size_t payload_length);
 [[nodiscard]] static bool test_read_frame(int fd, test_frame_t *frame,
                                           bool require_masked);
@@ -339,10 +339,8 @@ static void test_sha1_transform(test_sha1_ctx_t *ctx, const uint8_t *block) {
   }
 
   for (size_t i = 16; i < 80; ++i) {
-    words[i] =
-        test_rotl32(words[i - 3U] ^ words[i - 8U] ^ words[i - 14U] ^
-                        words[i - 16U],
-                    1U);
+    words[i] = test_rotl32(
+        words[i - 3U] ^ words[i - 8U] ^ words[i - 14U] ^ words[i - 16U], 1U);
   }
 
   auto a = ctx->state[0];
@@ -465,8 +463,7 @@ static void test_sha1_final(test_sha1_ctx_t *ctx, uint8_t digest[20]) {
   size_t dst = 0;
   while (src + 2U < input_length) {
     auto chunk = ((uint32_t)input[src] << 16U) |
-                 ((uint32_t)input[src + 1U] << 8U) |
-                 (uint32_t)input[src + 2U];
+                 ((uint32_t)input[src + 1U] << 8U) | (uint32_t)input[src + 2U];
     output[dst++] = TEST_BASE64_TABLE[(chunk >> 18U) & 0x3FU];
     output[dst++] = TEST_BASE64_TABLE[(chunk >> 12U) & 0x3FU];
     output[dst++] = TEST_BASE64_TABLE[(chunk >> 6U) & 0x3FU];
@@ -504,8 +501,7 @@ static void test_sha1_final(test_sha1_ctx_t *ctx, uint8_t digest[20]) {
   char challenge[128] = {0};
   auto challenge_length =
       snprintf(challenge, sizeof(challenge), "%s%s", key, TEST_ACCEPT_GUID);
-  if (challenge_length < 0 ||
-      (size_t)challenge_length >= sizeof(challenge)) {
+  if (challenge_length < 0 || (size_t)challenge_length >= sizeof(challenge)) {
     return false;
   }
 
@@ -518,21 +514,20 @@ static void test_sha1_final(test_sha1_ctx_t *ctx, uint8_t digest[20]) {
          0;
 }
 
-[[nodiscard]] static bool test_send_handshake_response(int fd,
-                                                       const char *accept_value) {
+[[nodiscard]] static bool
+test_send_handshake_response(int fd, const char *accept_value) {
   if (accept_value == nullptr) {
     return false;
   }
 
   char response[512] = {0};
-  auto written =
-      snprintf(response, sizeof(response),
-               "HTTP/1.1 101 Switching Protocols\r\n"
-               "Upgrade: websocket\r\n"
-               "Connection: Upgrade\r\n"
-               "Sec-WebSocket-Accept: %s\r\n"
-               "\r\n",
-               accept_value);
+  auto written = snprintf(response, sizeof(response),
+                          "HTTP/1.1 101 Switching Protocols\r\n"
+                          "Upgrade: websocket\r\n"
+                          "Connection: Upgrade\r\n"
+                          "Sec-WebSocket-Accept: %s\r\n"
+                          "\r\n",
+                          accept_value);
   if (written < 0 || (size_t)written >= sizeof(response)) {
     return false;
   }
@@ -549,8 +544,7 @@ static void test_sha1_final(test_sha1_ctx_t *ctx, uint8_t digest[20]) {
 }
 
 [[nodiscard]] static bool test_send_frame(int fd, uint8_t opcode, bool fin,
-                                          bool masked,
-                                          const uint8_t *payload,
+                                          bool masked, const uint8_t *payload,
                                           size_t payload_length) {
   if (payload == nullptr && payload_length != 0U) {
     return false;
@@ -693,7 +687,8 @@ static void test_sha1_final(test_sha1_ctx_t *ctx, uint8_t digest[20]) {
           },
   };
 
-  if (bind(listen_fd, (const struct sockaddr *)&address, sizeof(address)) != 0) {
+  if (bind(listen_fd, (const struct sockaddr *)&address, sizeof(address)) !=
+      0) {
     (void)close(listen_fd);
     return false;
   }
@@ -794,7 +789,8 @@ static void test_server_abort(test_server_t *server) {
   }
 
   if (mode == TEST_SERVER_BAD_STATUS) {
-    constexpr char bad_response[] = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+    constexpr char bad_response[] =
+        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
     return test_send_all(conn_fd, bad_response, sizeof(bad_response) - 1U);
   }
   if (mode == TEST_SERVER_MISSING_ACCEPT) {
@@ -844,7 +840,8 @@ static void test_server_abort(test_server_t *server) {
         frame.payload_length != sizeof(expected_payload)) {
       return false;
     }
-    return memcmp(frame.payload, expected_payload, sizeof(expected_payload)) == 0;
+    return memcmp(frame.payload, expected_payload, sizeof(expected_payload)) ==
+           0;
   }
   if (mode == TEST_SERVER_SEND_TEXT) {
     return test_send_frame(conn_fd, 0x1U, true, false,
@@ -895,8 +892,8 @@ static void test_server_abort(test_server_t *server) {
 }
 
 [[nodiscard]] static bool run_test_last_error_null_client() {
-  return strcmp(ws_client_last_error(nullptr), "ws_client_t pointer is nullptr") ==
-         0;
+  return strcmp(ws_client_last_error(nullptr),
+                "ws_client_t pointer is nullptr") == 0;
 }
 
 [[nodiscard]] static bool run_test_create_sets_no_error() {
@@ -957,8 +954,8 @@ static void test_server_abort(test_server_t *server) {
   }
 
   auto ok = !ws_client_connect(client, "example.com", 80, "chat") &&
-            expect_error_equals(client,
-                                "Path must start with '/' and contain no controls");
+            expect_error_equals(
+                client, "Path must start with '/' and contain no controls");
   ws_client_destroy(client);
   return ok;
 }
@@ -1057,8 +1054,9 @@ static void test_server_abort(test_server_t *server) {
 
   char buffer[16] = {0};
   size_t out_length = 0;
-  auto ok = !ws_client_receive_text(client, buffer, sizeof(buffer), &out_length) &&
-            expect_error_equals(client, "Client is not connected");
+  auto ok =
+      !ws_client_receive_text(client, buffer, sizeof(buffer), &out_length) &&
+      expect_error_equals(client, "Client is not connected");
   ws_client_destroy(client);
   return ok;
 }
@@ -1152,8 +1150,9 @@ static void test_server_abort(test_server_t *server) {
     return false;
   }
 
-  auto ok = !ws_client_connect(client, "127.0.0.1", server.port, "/chat") &&
-            expect_error_equals(client, "Handshake missing Sec-WebSocket-Accept");
+  auto ok =
+      !ws_client_connect(client, "127.0.0.1", server.port, "/chat") &&
+      expect_error_equals(client, "Handshake missing Sec-WebSocket-Accept");
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return ok && server_ok;
@@ -1171,8 +1170,9 @@ static void test_server_abort(test_server_t *server) {
     return false;
   }
 
-  auto ok = !ws_client_connect_secure(client, "127.0.0.1", server.port, "/chat") &&
-            expect_error_contains(client, "Failed to establish TLS");
+  auto ok =
+      !ws_client_connect_secure(client, "127.0.0.1", server.port, "/chat") &&
+      expect_error_contains(client, "Failed to establish TLS");
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return ok && server_ok;
@@ -1211,7 +1211,8 @@ static void test_server_abort(test_server_t *server) {
 
   constexpr uint8_t payload[] = {0x00U, 0x10U, 0x7FU, 0xFFU};
   auto connected = ws_client_connect(client, "127.0.0.1", server.port, "/chat");
-  auto sent = connected && ws_client_send_binary(client, payload, sizeof(payload));
+  auto sent =
+      connected && ws_client_send_binary(client, payload, sizeof(payload));
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return connected && sent && server_ok;
@@ -1232,9 +1233,10 @@ static void test_server_abort(test_server_t *server) {
   char buffer[64] = {0};
   size_t length = 0;
   auto connected = ws_client_connect(client, "127.0.0.1", server.port, "/chat");
-  auto received = connected &&
-                  ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
-                  length == 11U && strcmp(buffer, "server-text") == 0;
+  auto received =
+      connected &&
+      ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
+      length == 11U && strcmp(buffer, "server-text") == 0;
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return connected && received && server_ok;
@@ -1259,7 +1261,8 @@ static void test_server_abort(test_server_t *server) {
   auto received =
       connected &&
       ws_client_receive_binary(client, buffer, sizeof(buffer), &length) &&
-      length == sizeof(expected) && memcmp(buffer, expected, sizeof(expected)) == 0;
+      length == sizeof(expected) &&
+      memcmp(buffer, expected, sizeof(expected)) == 0;
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return connected && received && server_ok;
@@ -1280,9 +1283,10 @@ static void test_server_abort(test_server_t *server) {
   char buffer[8] = {0};
   size_t length = 0;
   auto connected = ws_client_connect(client, "127.0.0.1", server.port, "/chat");
-  auto received = connected &&
-                  !ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
-                  expect_error_contains(client, "Receive buffer is too small");
+  auto received =
+      connected &&
+      !ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
+      expect_error_contains(client, "Receive buffer is too small");
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return connected && received && server_ok;
@@ -1303,9 +1307,10 @@ static void test_server_abort(test_server_t *server) {
   uint8_t buffer[2] = {0};
   size_t length = 0;
   auto connected = ws_client_connect(client, "127.0.0.1", server.port, "/chat");
-  auto received = connected &&
-                  !ws_client_receive_binary(client, buffer, sizeof(buffer), &length) &&
-                  expect_error_contains(client, "Receive buffer is too small");
+  auto received =
+      connected &&
+      !ws_client_receive_binary(client, buffer, sizeof(buffer), &length) &&
+      expect_error_contains(client, "Receive buffer is too small");
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return connected && received && server_ok;
@@ -1326,15 +1331,17 @@ static void test_server_abort(test_server_t *server) {
   char buffer[64] = {0};
   size_t length = 0;
   auto connected = ws_client_connect(client, "127.0.0.1", server.port, "/chat");
-  auto received = connected &&
-                  ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
-                  length == 10U && strcmp(buffer, "after-ping") == 0;
+  auto received =
+      connected &&
+      ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
+      length == 10U && strcmp(buffer, "after-ping") == 0;
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return connected && received && server_ok;
 }
 
-[[nodiscard]] static bool run_test_receive_text_reassembles_fragmented_message() {
+[[nodiscard]] static bool
+run_test_receive_text_reassembles_fragmented_message() {
   test_server_t server = {0};
   if (!test_server_start(&server, TEST_SERVER_SEND_FRAGMENTED_TEXT)) {
     return false;
@@ -1349,9 +1356,10 @@ static void test_server_abort(test_server_t *server) {
   char buffer[64] = {0};
   size_t length = 0;
   auto connected = ws_client_connect(client, "127.0.0.1", server.port, "/chat");
-  auto received = connected &&
-                  ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
-                  length == 8U && strcmp(buffer, "fragment") == 0;
+  auto received =
+      connected &&
+      ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
+      length == 8U && strcmp(buffer, "fragment") == 0;
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return connected && received && server_ok;
@@ -1372,9 +1380,10 @@ static void test_server_abort(test_server_t *server) {
   char buffer[16] = {0};
   size_t length = 0;
   auto connected = ws_client_connect(client, "127.0.0.1", server.port, "/chat");
-  auto received = connected &&
-                  !ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
-                  expect_error_equals(client, "Server frame must not be masked");
+  auto received =
+      connected &&
+      !ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
+      expect_error_equals(client, "Server frame must not be masked");
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return connected && received && server_ok;
@@ -1395,9 +1404,10 @@ static void test_server_abort(test_server_t *server) {
   char buffer[16] = {0};
   size_t length = 0;
   auto connected = ws_client_connect(client, "127.0.0.1", server.port, "/chat");
-  auto received = connected &&
-                  !ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
-                  expect_error_contains(client, "Received unexpected binary frame");
+  auto received =
+      connected &&
+      !ws_client_receive_text(client, buffer, sizeof(buffer), &length) &&
+      expect_error_contains(client, "Received unexpected binary frame");
   ws_client_destroy(client);
   auto server_ok = test_server_wait_success(&server);
   return connected && received && server_ok;
